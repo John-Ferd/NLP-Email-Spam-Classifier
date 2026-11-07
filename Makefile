@@ -29,8 +29,9 @@ drift:
 
 all: train calibrate conformal drift
 
-smoke:
-	$(RUN) train.py --smoke && $(RUN) run_conformal.py --smoke
+smoke:   # synthetic data; writes to .smoke-artifacts/ so real results are untouched
+	cd scripts && SPAMGUARD_ARTIFACTS=../.smoke-artifacts $(PY) train.py --smoke
+	cd scripts && SPAMGUARD_ARTIFACTS=../.smoke-artifacts $(PY) run_conformal.py --smoke
 
 lint:
 	$(PY) -m ruff check src scripts tests

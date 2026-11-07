@@ -8,6 +8,7 @@ are computed with a calibrator that never saw them.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,7 +21,9 @@ from .data import Splits, load_enron, make_splits, synthetic_corpus
 from .models import MarginScaler, build_model, raw_scores
 
 ROOT = Path(__file__).resolve().parents[2]
-ARTIFACTS = ROOT / "artifacts"
+# Real results go to artifacts/. The smoke run sets SPAMGUARD_ARTIFACTS so it
+# never overwrites them with synthetic-data numbers.
+ARTIFACTS = Path(os.environ.get("SPAMGUARD_ARTIFACTS", ROOT / "artifacts"))
 
 
 def load_config(path: str | Path | None = None) -> dict:
@@ -76,7 +79,7 @@ def fit_calibrator(cfg: dict, fitted: FittedModel, cal_a):
 
 
 def save_json(obj, name: str):
-    ARTIFACTS.mkdir(exist_ok=True)
+    ARTIFACTS.mkdir(parents=True, exist_ok=True)
     with open(ARTIFACTS / name, "w") as fh:
         json.dump(obj, fh, indent=2, default=float)
     print(json.dumps(obj, indent=2, default=float))
