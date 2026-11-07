@@ -1,0 +1,29 @@
+{
+  "nb": {
+    "calibrator": "isotonic",
+    "raw_ece": 0.0097,
+    "cal_ece": 0.0026,
+    "raw_mce": 0.4879,
+    "cal_mce": 0.2162,
+    "raw_auc": 0.9961,
+    "cal_auc": 0.9958
+  },
+  "logreg": {
+    "calibrator": "isotonic",
+    "raw_ece": 0.036,
+    "cal_ece": 0.0039,
+    "raw_mce": 0.2967,
+    "cal_mce": 0.4686,
+    "raw_auc": 0.9994,
+    "cal_auc": 0.9992
+  },
+  "svm": {
+    "calibrator": "isotonic",
+    "raw_ece": 0.4203,
+    "cal_ece": 0.0036,
+    "raw_mce": 0.7603,
+    "cal_mce": 0.4382,
+    "raw_auc": 0.9998,
+    "cal_auc": 0.9998
+  }
+}

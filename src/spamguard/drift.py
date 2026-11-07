@@ -74,10 +74,10 @@ class DDM:
         if self.p + s <= self.p_min + self.s_min:
             self.p_min, self.s_min = self.p, s
 
-        if self.p + s >= self.p_min + self.drift_level * self.s_min:
+        if self.p + s > self.p_min + self.drift_level * self.s_min:
             self.reset()
             return "drift"
-        if self.p + s >= self.p_min + self.warning_level * self.s_min:
+        if self.p + s > self.p_min + self.warning_level * self.s_min:
             self.warning_zone = True
             return "warning"
         self.warning_zone = False

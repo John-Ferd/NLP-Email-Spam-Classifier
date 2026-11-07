@@ -96,21 +96,27 @@ class Calibrator:
 
 
 def fit_best_calibrator(scores, y, methods=("platt", "isotonic", "temperature"),
-                        n_bins=15):
-    """Fit several calibrators and return the one with lowest ECE on the cal set.
+                        n_bins=15, seed=0):
+    """Pick the calibrator with the lowest 2-fold cross-validated ECE, then refit it
+    on all of the calibration data.
 
-    NOTE: selecting on the same calibration data used to fit is acceptable for
-    choosing *between* low-capacity calibrators but the reported ECE must be
-    measured on the held-out TEST set. The README spells this out.
+    Scoring each method on the same points it was fit on would always favour
+    isotonic (it can fit the calibration set almost exactly), so selection uses
+    held-out folds. The reported ECE is still measured on the TEST set.
     """
     from .evaluate import expected_calibration_error
 
-    best, best_ece = None, np.inf
+    s = np.asarray(scores, dtype=float)
+    y = np.asarray(y, dtype=int)
+    idx = np.random.default_rng(seed).permutation(len(y))
+    folds = (idx[: len(y) // 2], idx[len(y) // 2:])
+
     table = {}
     for m in methods:
-        cal = Calibrator(m).fit(scores, y)
-        ece = expected_calibration_error(y, cal.predict_proba(scores), n_bins)
-        table[m] = ece
-        if ece < best_ece:
-            best, best_ece, best_name = cal, ece, m
-    return best, best_name, table
+        eces = []
+        for fit_idx, eval_idx in (folds, folds[::-1]):
+            cal = Calibrator(m).fit(s[fit_idx], y[fit_idx])
+            eces.append(expected_calibration_error(y[eval_idx], cal.predict_proba(s[eval_idx]), n_bins))
+        table[m] = float(np.mean(eces))
+    best_name = min(table, key=table.get)
+    return Calibrator(best_name).fit(s, y), best_name, table

@@ -1,0 +1,32 @@
+# Every knob used by the scripts lives here.
+data:
+  path: data/enron_spam_data.csv
+  test_size: 0.2      # fraction of the corpus held out for test
+  cal_size: 0.2       # fraction of the non-test pool held out for calibration
+  seed: 0
+
+model:
+  kind: nb            # nb | logreg | svm
+  alpha: 1.0          # NB smoothing
+  C: 1.0              # inverse regularization for logreg/svm
+
+calibration:
+  methods: [platt, isotonic, temperature]
+  n_bins: 15
+
+costs:                # each entry is one cost matrix to analyze
+  - {c_fp: 10, c_fn: 1}
+  - {c_fp: 1, c_fn: 1}
+
+conformal:
+  alpha: 0.1          # target coverage = 1 - alpha
+
+drift:
+  n: 6000
+  change_point: 0.5
+  max_obfuscation: 1.0
+  window: 500
+  step: 100
+  retrain_window: 1500
+  c_fp: 10            # threshold used for the decision-error stream (tau*)
+  c_fn: 1
