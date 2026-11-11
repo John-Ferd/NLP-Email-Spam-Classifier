@@ -1,5 +1,7 @@
 # SpamGuard
 
+[![CI](https://github.com/John-Ferd/NLP-Email-Spam-Classifier/actions/workflows/ci.yml/badge.svg)](https://github.com/John-Ferd/NLP-Email-Spam-Classifier/actions/workflows/ci.yml) ![Python 3.11](https://img.shields.io/badge/python-3.11-blue)
+
 **A spam classifier is a solved problem. The interesting questions begin the moment the classifier has to make a consequential, asymmetric decision in an adversarial, non-stationary world.** SpamGuard is built around those questions: *how confident should we be, what should we do about it, what can we guarantee, and how do we know when the world has moved out from under us?*
 
 The classification accuracy here is near-ceiling and is **not** the point. The project is about the four things that sit on top of a classifier and actually determine whether it is safe to deploy:
@@ -14,6 +16,8 @@ The classification accuracy here is near-ceiling and is **not** the point. The p
 Everything below is reproducible from the scripts in this repo on the public Enron-Spam corpus (`seed = 0`).
 
 ---
+
+> **Project history:** first built in 2025. In November 2026 it was rebuilt into a tested, reproducible package and published here, so the commit history starts then. All numbers in this README come from this published version.
 
 ## TL;DR — headline results (real numbers, Enron-Spam, n ≈ 33,665)
 
@@ -76,6 +80,19 @@ Each message carries a real `Date`. It is tempting to sort chronologically and s
 If an interviewer asks "why didn't you just use the dates?", this is the answer, and it is a stronger answer than any chronological experiment would have been.
 
 ---
+
+## Architecture
+
+```mermaid
+flowchart LR
+  D["Enron-Spam emails<br/>33,665 messages"] --> F["features.py<br/>word TF-IDF · char n-grams · numeric"]
+  F --> M["models<br/>Naive Bayes (from scratch) · LogReg · SVM"]
+  M --> C["calibration.py<br/>Platt · isotonic · temperature"]
+  C --> T["decision.py<br/>Bayes-optimal threshold<br/>from a cost matrix"]
+  C --> CP["conformal.py<br/>split + Mondrian<br/>prediction sets"]
+  M --> DR["drift.py<br/>DDM · streaming AUC"]
+  CP --> DR
+```
 
 ## Repository layout
 
