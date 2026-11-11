@@ -18,6 +18,7 @@ from sklearn.model_selection import train_test_split
 
 from .calibration import fit_best_calibrator
 from .data import Splits, load_enron, make_splits, synthetic_corpus
+from .env import environment
 from .models import MarginScaler, build_model, raw_scores
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -79,6 +80,9 @@ def fit_calibrator(cfg: dict, fitted: FittedModel, cal_a):
 
 
 def save_json(obj, name: str):
+    """Write a results file; dict results also record the package versions used."""
+    if isinstance(obj, dict):
+        obj = {**obj, "environment": environment()}
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     with open(ARTIFACTS / name, "w") as fh:
         json.dump(obj, fh, indent=2, default=float)
