@@ -1,0 +1,49 @@
+{
+  "model": "nb",
+  "calibrator": "isotonic",
+  "calibrator_ece_on_cal_a": {
+    "platt": 0.0082,
+    "isotonic": 0.006,
+    "temperature": 0.0082
+  },
+  "test_raw": {
+    "roc_auc": 0.9961,
+    "pr_auc": 0.9936,
+    "brier": 0.011,
+    "ece": 0.0097,
+    "mce": 0.4879,
+    "precision_at_99_recall": 0.9835,
+    "fpr_at_99_tpr": 0.0172
+  },
+  "test_calibrated": {
+    "roc_auc": 0.9958,
+    "pr_auc": 0.9928,
+    "brier": 0.0109,
+    "ece": 0.0026,
+    "mce": 0.2162,
+    "precision_at_99_recall": 0.9826,
+    "fpr_at_99_tpr": 0.023
+  },
+  "costs": [
+    {
+      "c_fp": 10,
+      "c_fn": 1,
+      "tau_star": 0.9091,
+      "cost_at_tau_star": 0.07411,
+      "cost_at_0.5": 0.12164,
+      "best_grid_threshold": 0.95,
+      "best_grid_cost": 0.07025,
+      "savings_vs_0.5_pct": 39.07
+    },
+    {
+      "c_fp": 1,
+      "c_fn": 1,
+      "tau_star": 0.5,
+      "cost_at_tau_star": 0.01337,
+      "cost_at_0.5": 0.01337,
+      "best_grid_threshold": 0.502,
+      "best_grid_cost": 0.01307,
+      "savings_vs_0.5_pct": 0.0
+    }
+  ]
+}

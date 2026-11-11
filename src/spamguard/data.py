@@ -16,10 +16,8 @@ Design notes (see README for full reasoning):
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd

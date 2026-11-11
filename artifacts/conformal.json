@@ -1,0 +1,48 @@
+{
+  "model": "nb",
+  "calibrator": "isotonic",
+  "qhat_split": 0.00939,
+  "qhat_mondrian": {
+    "0": 0.00939,
+    "1": 0.0098
+  },
+  "frac_test_probs_saturated": 0.0,
+  "split": {
+    "alpha": 0.1,
+    "target_coverage": 0.9,
+    "empirical_coverage": 0.8926,
+    "avg_set_size": 0.896,
+    "singleton_rate": 0.8959,
+    "abstain_rate": 0.0,
+    "empty_rate": 0.1041,
+    "coverage_ham": 0.9698,
+    "coverage_spam": 0.818
+  },
+  "mondrian": {
+    "alpha": 0.1,
+    "target_coverage": 0.9,
+    "empirical_coverage": 0.9299,
+    "avg_set_size": 0.934,
+    "singleton_rate": 0.9342,
+    "abstain_rate": 0.0,
+    "empty_rate": 0.0658,
+    "coverage_ham": 0.9698,
+    "coverage_spam": 0.8914
+  },
+  "repeated_30_cal_splits": {
+    "split": {
+      "mean_coverage": 0.9158,
+      "sd_coverage": 0.0117,
+      "min_coverage": 0.8926,
+      "mean_coverage_ham": 0.9392,
+      "mean_coverage_spam": 0.8931
+    },
+    "mondrian": {
+      "mean_coverage": 0.9259,
+      "sd_coverage": 0.0165,
+      "min_coverage": 0.8806,
+      "mean_coverage_ham": 0.9383,
+      "mean_coverage_spam": 0.9139
+    }
+  }
+}

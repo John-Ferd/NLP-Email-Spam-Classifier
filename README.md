@@ -17,11 +17,11 @@ Everything below is reproducible from the scripts in this repo on the public Enr
 
 ## TL;DR — headline results (real numbers, Enron-Spam, n ≈ 33,665)
 
-- **Discrimination is table-stakes and we treat it that way.** Logistic Regression reaches ROC-AUC **0.9996**; even the from-scratch Naive Bayes reaches **0.996** with FPR **1.7%** at 99% recall. These numbers are reported and then set aside.
-- **Probability quality is where models actually differ.** Raw Expected Calibration Error: LogReg **0.003** (already well-calibrated), Naive Bayes **0.010** (overconfident), linear SVM **0.290** (its "scores" are margins, not probabilities). A single held-out calibration step drives the SVM to **0.004** — a ~74× improvement — *without changing its AUC at all.*
-- **Calibrated probabilities enable optimal decisions.** Under a 10:1 cost asymmetry (deleting a real email is 10× worse than missing spam), the closed-form Bayes threshold **τ\* = 0.909** cuts expected cost by **38.6%** versus the naive 0.5 threshold.
-- **Conformal prediction delivers its promised guarantee.** At a target of 90%, split-conformal coverage on held-out test is **95.1%** (≥ 90% ✓), with 95.6% of emails receiving a confident singleton decision.
-- **The drift result is the most important finding in the repo.** Under an injected concept-drift attack, **ROC-AUC barely moves (0.996 → 0.992) while conformal coverage collapses (0.917 → 0.73).** A team monitoring only discrimination would see nothing wrong. Calibration/coverage are *leading* indicators of drift; AUC is a *lagging* one.
+- **Discrimination is table-stakes and we treat it that way.** Logistic Regression reaches ROC-AUC **0.9994**; even the from-scratch Naive Bayes reaches **0.996** with FPR **1.7%** at 99% recall. These numbers are reported and then set aside.
+- **Probability quality is where models actually differ.** Raw Expected Calibration Error: Naive Bayes **0.010**, LogReg **0.036** (*under*confident: L2 regularization shrinks its logits toward 0), linear SVM **0.420** (its "scores" are margins, not probabilities). A single held-out calibration step drives the SVM to **0.004** — a ~117× improvement — *without changing its AUC at all.*
+- **Calibrated probabilities enable optimal decisions.** Under a 10:1 cost asymmetry (deleting a real email is 10× worse than missing spam), the closed-form Bayes threshold **τ\* = 0.909** cuts expected cost by **39.1%** versus the naive 0.5 threshold.
+- **Conformal prediction delivers its guarantee — on average, which is what it promises.** At a target of 90%, split-conformal coverage averaged over 30 random calibration draws is **91.6%** (≥ 90% ✓). Any *single* draw can land below: the seed-0 draw gives 89.3%. Marginal coverage also hides a gap between classes (spam 89.3% vs ham 93.9% on average), which class-conditional (Mondrian) conformal closes (spam 91.4%).
+- **The drift result is the most important finding in the repo.** Under an injected concept-drift attack, **ROC-AUC barely moves (0.995 → 0.986) while conformal coverage collapses (0.886 → 0.668).** A team monitoring only discrimination would see nothing wrong. Calibration/coverage are *leading* indicators of drift; AUC is a *lagging* one.
 
 <p align="center"><img src="artifacts/drift_coverage.png" width="48%"> <img src="artifacts/drift_auc.png" width="48%"></p>
 
@@ -43,7 +43,7 @@ These are exactly the competencies that transfer to quantitative finance and ML 
 ### What this project is deliberately *not*
 
 - **Not an accuracy contest.** If you are looking for a 0.001 F1 improvement, this is the wrong repo.
-- **Not an MLOps / serving project.** There is no FastAPI service, Docker image, or CI here *by design* — that engineering story lives in a separate project. SpamGuard is about statistical and decision-theoretic rigor.
+- **Not an MLOps / serving project.** There is no FastAPI service or Docker image here *by design* (CI only runs lint, tests and a smoke run) — that engineering story lives in a separate project. SpamGuard is about statistical and decision-theoretic rigor.
 - **Not an online-learning project.** Drift is *detected and quantified*, not *adapted to*. Regret-bounded online learners are named as the natural next step and left out of scope (see [Scope boundary](#the-scope-boundary-detection-not-adaptation)).
 
 ---
@@ -80,8 +80,8 @@ If an interviewer asks "why didn't you just use the dates?", this is the answer,
 ## Repository layout
 
 ```
-spamguard/
 ├── README.md                      ← this document
+├── Makefile · pyproject.toml      ← setup / data / test / run targets
 ├── configs/default.yaml           ← every hyperparameter (costs, alpha, drift params, ...)
 ├── src/spamguard/
 │   ├── data.py                    ← loading, stratified splits, confound report, drift injection
@@ -93,9 +93,11 @@ spamguard/
 │   ├── calibration.py             ← Platt · isotonic · temperature                    [Tier 1]
 │   ├── decision.py                ← cost matrix → Bayes-optimal threshold              [Tier 1]
 │   ├── conformal.py               ← split + Mondrian conformal, coverage              [Tier 2]
-│   └── drift.py                   ← DDM (from scratch), streaming AUC, coverage canary [Tier 2]
+│   ├── drift.py                   ← DDM (from scratch), streaming AUC, coverage canary [Tier 2]
+│   └── pipeline.py                ← shared config / data / fitting plumbing for the scripts
 ├── scripts/                       ← train.py · run_calibration.py · run_conformal.py · run_drift.py
-└── tests/                         ← 14 tests: NB parity, conformal coverage, τ* optimality, ...
+├── artifacts/                     ← every JSON result and figure quoted in this README
+└── tests/                         ← 15 tests: NB parity, conformal coverage, τ* optimality, DDM, parser, ...
 ```
 
 ---
@@ -123,7 +125,7 @@ The point of training three models is that **they fail differently**, and the *w
 | Model | Role | Key property |
 |---|---|---|
 | `nb` (from scratch) | the headline base learner | **Overconfident.** The conditional-independence assumption is violated by correlated tokens, so posteriors are pushed toward 0/1. |
-| `logreg` | the strong, honest baseline | **Well-calibrated by construction.** Logistic loss is a *proper scoring rule*, so the probabilities are already roughly right. |
+| `logreg` | the strong baseline | **Calibrated in theory, not in practice here.** Logistic loss is a *proper scoring rule*, but L2 regularization makes the fitted model underconfident (§4). |
 | `svm` (LinearSVC) | the cautionary tale | **Emits a margin, not a probability.** `decision_function` is unbounded; treating it as a probability is a category error. |
 
 The from-scratch Multinomial NB (`models/naive_bayes.py`) is implemented in log space with Lidstone smoothing:
@@ -152,14 +154,14 @@ Real Enron numbers, from-scratch NB, raw vs. calibrated on the held-out test spl
 
 | metric | raw NB | calibrated NB |
 |---|---|---|
-| ROC-AUC | 0.9961 | 0.9957 |
-| Brier | 0.0110 | 0.0105 |
-| **ECE** | 0.0097 | **0.0035** |
-| **MCE** | 0.488 | **0.257** |
-| precision @ 99% recall | 0.983 | 0.982 |
-| FPR @ 99% TPR | 0.017 | 0.018 |
+| ROC-AUC | 0.9961 | 0.9958 |
+| Brier | 0.0110 | 0.0109 |
+| **ECE** | 0.0097 | **0.0026** |
+| **MCE** | 0.488 | **0.216** |
+| precision @ 99% recall | 0.983 | 0.983 |
+| FPR @ 99% TPR | 0.017 | 0.023 |
 
-The headline: calibration cuts ECE ~3× and halves the worst-bin error (MCE), while ROC-AUC is essentially unchanged — exactly what the theory predicts (next section).
+The headline: calibration cuts ECE ~3.7× and more than halves the worst-bin error (MCE), while ROC-AUC is essentially unchanged — exactly what the theory predicts (next section). (`artifacts/train_metrics.json`)
 
 ### 4. Tier 1 — Calibration
 
@@ -171,25 +173,27 @@ The headline: calibration cuts ECE ~3× and halves the worst-bin error (MCE), wh
 - **Temperature scaling:** `p = σ(s / T)`. Platt with the bias fixed to 0 and slope constrained to 1/T — *one* parameter. Appropriate when the score is already a centred logit (a neural net); included for comparison.
 - **Isotonic regression:** `p = m(s)` for the best monotone non-decreasing `m` (pool-adjacent-violators). Non-parametric and flexible, but data-hungry — with few calibration points it overfits. Enron's large calibration split makes it viable.
 
-**Why a scalar transform cannot change AUC** (the question an interviewer *will* ask): ROC-AUC depends only on the *ordering* of scores. Platt and temperature scaling are strictly increasing functions of the score, so they preserve order exactly, hence AUC is unchanged. Isotonic is only *weakly* monotone (it can map distinct scores to a tie), so it can perturb AUC negligibly through ties — which is why the table above shows 0.9961 → 0.9957 rather than an exact match.
+**Why a scalar transform cannot change AUC** (the question an interviewer *will* ask): ROC-AUC depends only on the *ordering* of scores. Platt and temperature scaling are strictly increasing functions of the score, so they preserve order exactly, hence AUC is unchanged. Isotonic is only *weakly* monotone (it can map distinct scores to a tie), so it can perturb AUC negligibly through ties — which is why the table above shows 0.9961 → 0.9958 rather than an exact match.
 
 **The real comparison across all three base models** is where the lesson lands:
 
 | model | raw ECE | calibrated ECE | raw MCE | calibrated MCE | ROC-AUC (raw→cal) |
 |---|---|---|---|---|---|
-| `nb` | 0.0097 | 0.0035 | 0.488 | 0.257 | 0.9961 → 0.9957 |
-| `logreg` | 0.0031 | 0.0021 | 0.256 | **0.719** | 0.9996 → 0.9995 |
-| `svm` | **0.290** | **0.0039** | 0.470 | 0.494 | 0.9997 → 0.9997 |
+| `nb` | 0.0097 | 0.0026 | 0.488 | 0.216 | 0.9961 → 0.9958 |
+| `logreg` | 0.0360 | 0.0039 | 0.297 | **0.469** | 0.9994 → 0.9992 |
+| `svm` | **0.420** | **0.0036** | 0.760 | 0.438 | 0.9998 → 0.9998 |
+
+(`artifacts/calibration_comparison.json`. The calibrator is chosen per model by 2-fold cross-validated ECE on the calibration split — scoring each method on the points it was fit on would always pick isotonic — and isotonic won for all three.)
 
 Three things to read off this table, each a talking point:
 
-1. **The SVM is the cautionary tale.** Its margin, scaled into [0,1], has ECE **0.290** — wildly miscalibrated, because a margin is not a probability. Platt scaling repairs it to **0.004** (~74×) while leaving its 0.9997 AUC untouched. *Ranking ≠ calibration*, demonstrated in one row.
-2. **Logistic Regression confirms the theory.** Its raw ECE is already **0.003** — logistic loss is a proper scoring rule, so it is calibrated out of the box.
-3. **An honest wrinkle:** isotonic *worsened* LogReg's MCE (0.256 → 0.719). On an already-calibrated model, isotonic's flexibility overfits the sparse high-confidence bins, helping average ECE but hurting the worst case. This is precisely why we report MCE alongside ECE, and why the calibrator is *selected per model* rather than assumed. Pretending this didn't happen would be the wrong call; surfacing it is the right one.
+1. **The SVM is the cautionary tale.** Its margin, min-max scaled into [0,1], has ECE **0.420** — wildly miscalibrated, because a margin is not a probability. Calibration repairs it to **0.004** (~117×) while leaving its 0.9998 AUC untouched. *Ranking ≠ calibration*, demonstrated in one row.
+2. **"Logistic regression is calibrated by construction" needs a caveat.** Logistic loss is a proper scoring rule, but the model is fit with L2 regularization (scikit-learn's default `C = 1`, deliberately left untuned). The penalty shrinks the weights, which pulls predicted probabilities toward 0.5, so this LogReg is *under*confident: raw ECE **0.036**, worse than Naive Bayes. Calibration brings it to 0.004. The theory holds for the unpenalized maximum-likelihood fit, not for whatever regularized model you actually ship.
+3. **An honest wrinkle:** isotonic *worsened* LogReg's MCE (0.297 → 0.469). Isotonic's flexibility overfits the sparse high-confidence bins, helping average ECE but hurting the worst case. This is precisely why we report MCE alongside ECE. Pretending this didn't happen would be the wrong call; surfacing it is the right one.
 
 <p align="center"><img src="artifacts/reliability_svm.png" width="46%"> <img src="artifacts/reliability.png" width="46%"></p>
 
-*Left: the SVM margin (blue) is far from the diagonal; Platt scaling (orange) pulls it onto it. Right: NB before/after isotonic — note the well-populated bins near 0 and 1 are well-calibrated; the mid-confidence wiggle is sparse-bin noise carrying little mass, which is why mass-weighted ECE stays low.*
+*Left: the SVM margin (blue) is far from the diagonal; isotonic calibration (orange) pulls it onto it. Right: NB before/after isotonic — note the well-populated bins near 0 and 1 are well-calibrated; the mid-confidence wiggle is sparse-bin noise carrying little mass, which is why mass-weighted ECE stays low.*
 
 ### 5. Tier 1 — Cost-sensitive decisions
 
@@ -214,10 +218,10 @@ Real Enron numbers (calibrated NB, test split):
 
 | cost matrix | τ\* | cost @ τ\* | cost @ 0.5 | empirical-optimal threshold | savings vs 0.5 |
 |---|---|---|---|---|---|
-| `c_fp=10, c_fn=1` | 0.909 | 0.0729 | 0.1188 | 0.938 | **38.6%** |
-| `c_fp=1, c_fn=1` | 0.500 | 0.0132 | 0.0132 | 0.646 | 0.0% |
+| `c_fp=10, c_fn=1` | 0.909 | 0.0741 | 0.1216 | 0.950 | **39.1%** |
+| `c_fp=1, c_fn=1` | 0.500 | 0.0134 | 0.0134 | 0.502 | 0.0% |
 
-Two validations here. First, moving to the cost-aware threshold saves **38.6%** of expected cost under the 10:1 asymmetry. Second — and this is the sanity check that proves the probabilities are calibrated — the *empirical* cost-minimizing threshold found by grid search (0.938) sits close to the closed-form τ\* (0.909). On miscalibrated probabilities that gap would be large; the small residual is honest evidence of slight remaining miscalibration, not a contradiction.
+Two validations here. First, moving to the cost-aware threshold saves **39.1%** of expected cost under the 10:1 asymmetry. Second — and this is the sanity check that the probabilities are calibrated — the *empirical* cost-minimizing threshold found by grid search (0.950) sits close to the closed-form τ\* (0.909), and the grid-optimal cost (0.0703) is only 5% below the cost at τ\*. On miscalibrated probabilities that gap would be large; the small residual is honest evidence of slight remaining miscalibration, not a contradiction.
 
 ### 6. Tier 2 — Conformal prediction
 
@@ -239,7 +243,7 @@ For binary spam this yields four possible sets, and their operational meaning is
 
 - **`{spam}` or `{ham}`** (singleton) — a confident, auto-actionable decision.
 - **`{ham, spam}`** — the model genuinely cannot tell; route to review.
-- **`{}`** (empty) — *neither* label conforms; an atypical input. **Counterintuitively, on a confident binary classifier uncertainty shows up as empty sets, not full ones**: with q̂ small (≈0.02 here), a label is admitted only if its probability exceeds ≈0.98, so a 70/30 email admits *neither* label and returns `{}`. Operationally, what matters is singleton (act) vs. non-singleton (review) — and both `{}` and `{both}` mean "review."
+- **`{}`** (empty) — *neither* label conforms; an atypical input. **Counterintuitively, on a confident binary classifier uncertainty shows up as empty sets, not full ones**: with q̂ small (≈0.009 here), a label is admitted only if its probability exceeds ≈0.99, so a 70/30 email admits *neither* label and returns `{}`. On this data *every* non-singleton set is empty; `{ham, spam}` never occurs. Operationally, what matters is singleton (act) vs. non-singleton (review) — and both `{}` and `{both}` mean "review."
 
 **Marginal vs. class-conditional.** Plain split conformal guarantees coverage *averaged over classes*, which can silently under-cover the minority or harder class. `MondrianConformal` runs step 2 *per class*, guaranteeing coverage *within* each class — the right notion when false negatives and false positives are valued differently.
 
@@ -248,13 +252,18 @@ Real Enron numbers (calibrated NB; the calibration split is **halved** so the co
 | quantity | split (marginal) | Mondrian (class-conditional) |
 |---|---|---|
 | target coverage | 0.90 | 0.90 |
-| **empirical coverage** | **0.951** | 0.951 |
-| coverage — ham | 0.974 | 0.974 |
-| coverage — spam | 0.930 | 0.930 |
-| singleton rate | 0.956 | 0.956 |
-| empty (abstain) rate | 0.044 | 0.044 |
+| **empirical coverage**, seed-0 calibration draw | **0.893** | 0.930 |
+| coverage — ham | 0.970 | 0.970 |
+| coverage — spam | 0.818 | 0.891 |
+| singleton rate | 0.896 | 0.934 |
+| empty (abstain) rate | 0.104 | 0.066 |
+| **mean coverage over 30 calibration draws** (± sd) | **0.916** (± 0.012) | 0.926 (± 0.017) |
+| mean coverage — ham / spam | 0.939 / 0.893 | 0.938 / 0.914 |
 
-Coverage clears the 90% target (it is mildly conservative — expected from the `(n+1)` correction on a near-separable problem). **Marginal and Mondrian coincide here**, and the reason is itself a good answer: on a *balanced* (51% spam), near-separable corpus, isotonic saturates ~82% of points to probability exactly 1.0, so the nonconformity distribution is dominated by zeros and its tail quantile is nearly identical across classes. Mondrian's value appears under class imbalance or asymmetric difficulty; here it confirms the marginal predictor was already class-balanced (ham 0.974 / spam 0.930, both ≥ 0.90).
+(`artifacts/conformal.json`.) Two lessons:
+
+1. **The guarantee is an average over the calibration draw, not a promise for every draw.** Averaged over 30 random halvings of the calibration split, split-conformal coverage is 91.6% — above the 90% target, as the theory says it must be. The seed-0 draw happens to be the lowest of the 30 (89.3%). Reporting only that draw would make the method look broken; reporting only a lucky draw would oversell it. The spread is the honest picture.
+2. **Marginal coverage hides a class gap, and Mondrian closes it.** Split conformal over-covers ham and under-covers spam (0.939 vs 0.893 on average), because one shared quantile is dominated by the easier class. Mondrian fits a separate quantile per class and lifts spam coverage to 0.914 on average. That is exactly the case Mondrian exists for: when a missed spam and a deleted ham are valued differently, you want the guarantee *within* each class.
 
 ### 7. Tier 2 — Drift, and the most important figure in the repo
 
@@ -274,21 +283,27 @@ warning  when  pₜ + sₜ ≥ p_min + 2·s_min
 drift    when  pₜ + sₜ ≥ p_min + 3·s_min     (the canonical 2σ / 3σ rule)
 ```
 
-with a 100-sample warm-up so the variance estimate settles before detection arms (tuned empirically: this keeps stationary false-alarms to ≤ 1 across seeds while still detecting an abrupt change within ~60 samples — see `tests/test_drift.py`).
+with a 100-sample warm-up so the variance estimate settles before detection arms. Two honest notes on this detector:
+
+- **A bug fixed along the way:** the comparisons originally used `≥`, so a perfect classifier (error rate and std both 0) satisfied `0 ≥ 0 + 3·0` and flagged "drift" every 100 samples. They are now strict (`>`), with a regression test (`tests/test_drift.py`).
+- **DDM false-alarms often on long stationary streams.** On simulated 3,000-step streams with a constant error rate, at least one false drift flag appeared in 68%, 51%, 34% and 25% of 100 runs at error rates of 1%, 2%, 5% and 10%. On an abrupt jump from 5% to 40% error it fires a median of 56 samples after the change. On the Enron stream below it raised no flag before the change point, but it should be read as a tripwire to investigate, not a calibrated test.
 
 **The result — and the finding the whole project is built to surface:**
 
 | quantity | value |
 |---|---|
 | injected change point | index 3,000 |
-| **DDM first drift flag** | index 3,413 → **detection delay 413** |
-| DDM re-flags (sustained drift) | 3,524, 4,305 |
-| AUC, pre-change mean → post-change min | **0.996 → 0.992** |
-| **conformal coverage, pre-change mean → post-change min** | **0.917 → 0.730** |
+| **DDM first drift flag** | index 3,590 → **detection delay 590** |
+| DDM re-flags (sustained drift) | 3,804 |
+| AUC, pre-change mean → post-change min | **0.995 → 0.986** |
+| **conformal coverage, pre-change mean → post-change min** | **0.886 → 0.668** |
+| window-retrained model AUC, post-change min | 0.990 |
+
+(`artifacts/drift.json`. Pre-change coverage sits slightly under 0.90 because the drift run uses the seed-0 calibration draw, which under-covers — see §6.)
 
 Read the two figures at the [top of this document](#tldr--headline-results-real-numbers-enron-spam-n--33665) together:
 
-> **The obfuscation barely dents the model's *ranking* (AUC 0.996 → 0.992) but collapses its *probabilities* (coverage 0.917 → 0.730).**
+> **The obfuscation barely dents the model's *ranking* (AUC 0.995 → 0.986) but collapses its *probabilities* (coverage 0.886 → 0.668).**
 
 This is not a bug; it is the lesson. AUC is a ranking statistic and is remarkably robust — the frozen model still sorts most obfuscated spam above most ham, so a dashboard tracking only AUC would report "all clear." But the *scores* decay: obfuscated spam gets lower spam-probability, so at the cost-optimal threshold τ\* = 0.909 those emails slip below the line, decision-errors rise, DDM fires, and conformal coverage craters. **Calibration- and coverage-based monitoring are leading indicators of drift; discrimination metrics are lagging ones.** That single, defensible, slightly counterintuitive result is the strongest thing in the repo and the cleanest justification for the project's entire framing.
 
@@ -308,11 +323,12 @@ pip install -e ".[dev]"            # or:  make setup
 make data
 
 # 3. Reproduce everything
-make test          # 14 tests: NB↔sklearn parity, conformal coverage, τ* optimality, DDM, parser
+make test          # 15 tests: NB↔sklearn parity, conformal coverage, τ* optimality, DDM, parser
 make train         # base model + calibration; writes artifacts/train_metrics.json + reliability.png
-make calibrate     # nb vs logreg vs svm calibration comparison table
-make conformal     # split + Mondrian coverage on test
+make calibrate     # nb vs logreg vs svm calibration comparison; writes reliability_svm.png
+make conformal     # split + Mondrian coverage on test, plus 30 repeated calibration draws
 make drift         # the drift experiment; writes drift_auc.png + drift_coverage.png
+make all           # train + calibrate + conformal + drift (~4 minutes on a laptop CPU)
 
 # offline smoke test, no download required (synthetic data):
 make smoke
@@ -326,12 +342,13 @@ All knobs — the cost matrix, the conformal `alpha`, the drift parameters, the 
 
 - **"Your accuracy is 99%+. Isn't this trivial?"** Yes — and that's the premise. Ranking spam is solved; the project is about calibration, asymmetric-cost decisions, coverage guarantees, and drift, none of which accuracy measures.
 - **"Why not split by date to study drift?"** Because on Enron the label and the date are confounded (all ham 2000–02, all spam 04–05); a temporal split leaks the label and any "drift" would be that leakage. Controlled injection with a known change point is the only way to get honest detection metrics.
-- **"How can calibration not change your AUC?"** AUC depends only on score *ordering*; Platt/temperature are strictly monotone and preserve it exactly. Isotonic is weakly monotone and perturbs it only through ties (0.9961 → 0.9957).
+- **"How can calibration not change your AUC?"** AUC depends only on score *ordering*; Platt/temperature are strictly monotone and preserve it exactly. Isotonic is weakly monotone and perturbs it only through ties (0.9961 → 0.9958).
 - **"Where does τ\* = 0.909 come from?"** Minimizing expected cost point-wise: predict spam iff `(1−p)c_fp < p·c_fn`, i.e. `p > c_fp/(c_fp+c_fn)`. It is only valid on calibrated p — which is why calibration comes first.
 - **"What exactly does conformal guarantee, and on what assumption?"** Marginal coverage ≥ 1−α, finite-sample and distribution-free, under exchangeability of calibration and test points. Drift breaks exchangeability, which is why coverage is a valid drift canary.
-- **"Why did Mondrian match split conformal?"** Balanced, near-separable data: isotonic saturates ~82% of probabilities to 1.0, so per-class nonconformity quantiles nearly coincide. Mondrian diverges under imbalance/asymmetric difficulty.
+- **"Your seed-0 coverage is 89.3%, below the 90% target. Is the method broken?"** No. The guarantee is in expectation over the calibration draw; over 30 draws the mean is 91.6%. A single draw below target is expected some of the time.
+- **"Why use Mondrian?"** Split conformal under-covered spam (0.893 on average vs 0.939 for ham). Mondrian's per-class quantile lifts spam coverage to 0.914.
 - **"Did you reuse the calibration set for conformal?"** No — the calibration split is halved: one half fits the probability calibrator, the other fits the conformal quantile, keeping the scoring function independent of the threshold data.
-- **"Your AUC barely dropped under drift — so is the detector even working?"** That *is* the result: AUC is a lagging indicator. Coverage collapsed 0.917 → 0.730 and DDM fired at delay 413. The point is to monitor the sensitive signal, not the robust one.
+- **"Your AUC barely dropped under drift — so is the detector even working?"** That *is* the result: AUC is a lagging indicator. Coverage collapsed 0.886 → 0.668 and DDM fired at delay 590. The point is to monitor the sensitive signal, not the robust one.
 
 ## Honest limitations
 
@@ -339,6 +356,7 @@ All knobs — the cost matrix, the conformal `alpha`, the drift parameters, the 
 - The injected drift is a **synthetic proxy** for adversarial evasion; it is honest about being a controlled experiment with a known change point (which is what makes detection metrics meaningful) rather than a claim about real spammer behavior.
 - Character n-grams are presented as a **partial** robustness measure (good against segmentation, weak against substitution), not a defense.
 - Drift is **detected, not adapted to** — by explicit design choice, not omission.
+- DDM has a high false-alarm rate on long stationary streams (see §7); a production monitor would need a detector with a controlled false-alarm rate.
 
 ## References
 

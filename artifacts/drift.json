@@ -1,0 +1,15 @@
+{
+  "change_point": 3000,
+  "first_drift_flag": 3590,
+  "detection_delay": 590,
+  "auc_pre_mean": 0.9952,
+  "auc_post_min": 0.986,
+  "coverage_pre_mean": 0.8855,
+  "coverage_post_min": 0.668,
+  "retrain_auc_post_min": 0.9899,
+  "all_drift_flags": [
+    3590,
+    3804
+  ],
+  "threshold": 0.9091
+}
